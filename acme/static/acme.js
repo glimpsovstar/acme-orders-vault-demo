@@ -14,7 +14,9 @@ const get = (url) => fetch(url).then((r) => r.json());
 function vault(d) {
   if (pinned && (d.state === 'gone' || pinned === d.latest)) pinned = null;
   const tabs = (d.versions || []).map((v) => {
-    const label = v.version === d.latest ? 'Latest' : v.version === pinned ? 'Pinned' : v.state !== 'live' ? v.state[0].toUpperCase() + v.state.slice(1) : when(v.created);
+    // A deleted or destroyed version says so on its tab, the latest one too.
+    const state = v.state[0].toUpperCase() + v.state.slice(1);
+    const label = v.version === d.latest ? (v.state === 'live' ? 'Latest' : state) : v.version === pinned ? 'Pinned' : v.state !== 'live' ? state : when(v.created);
     const b = el('button', { className: 'v' + (v.state !== 'live' ? ' gone' : ''), type: 'button', textContent: `v${v.version}`, onclick: () => { pinned = v.version === d.latest ? null : v.version; tick(); } }, el('span', { textContent: label }));
     b.setAttribute('aria-pressed', String(v.version === d.version));
     if (v.version === pinned && bad(d)) b.classList.add('pinned');

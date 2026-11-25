@@ -95,6 +95,23 @@ def test_version_beyond_latest_is_404():
     assert "Vault has no version 999" in r.get_json()["message"]
 
 
+class AgedOutV2(FakeV2):
+    """Vault keeps only versions 2 and 3 (max_versions=2)."""
+    def read_secret_metadata(self, path, mount_point):
+        md = super().read_secret_metadata(path, mount_point)
+        del md["data"]["versions"]["1"]
+        return md
+
+
+def test_aged_out_version_is_404_on_both_routes():
+    c = make(v2=AgedOutV2())
+    for url in ("/api/secret?version=1", "/api/orders?version=1"):
+        r = c.get(url)
+        assert r.status_code == 404, url
+        body = r.get_json()
+        assert body["state"] == "gone" and body["message"] == "Vault no longer keeps version 1", url
+
+
 def test_latest_ok_shape():
     body = make().get("/api/secret").get_json()
     assert body["state"] == "ok" and body["version"] == 3 and body["latest"] == 3
@@ -320,3 +337,23 @@ def test_default_app_resets_the_real_cached_client(monkeypatch):
     app.testing = True
     app.test_client().get("/api/secret")
     assert calls
+
+
+def test_default_secrets_manager_client_has_short_timeouts(monkeypatch):
+    """A Secrets Manager that hangs must not hold a gunicorn worker for long."""
+    import boto3
+    built = []
+
+    def fake_client(service, **kwargs):
+        built.append((service, kwargs))
+        return FakeSM()
+    monkeypatch.setattr(boto3, "client", fake_client)
+    app = create_app(vault_factory=lambda: FakeClient(FakeV2()), aws_name="vault/app/db",
+                     login=accepts_latest, fetch_orders=orders_for_latest)
+    app.testing = True
+    assert app.test_client().get("/api/secret?source=aws").get_json()["state"] == "ok"
+    (service, kwargs), = built
+    assert service == "secretsmanager"
+    cfg = kwargs["config"]
+    assert (cfg.connect_timeout, cfg.read_timeout) == (3, 5)
+    assert cfg.retries == {"max_attempts": 2}

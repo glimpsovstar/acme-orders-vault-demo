@@ -69,7 +69,7 @@ Each response has a `state` and a `message` in plain words. These are the messag
 | `refused` | For the latest version: "Database login with v3: refused. The database does not accept this password." For an older version: "Database login with v1: refused. Version 1 is still readable in Vault, but the database user now has the v3 password. Rotate both together." |
 | `deleted` | Version 2 was deleted in Vault |
 | `destroyed` | Version 1 was destroyed in Vault |
-| `gone` | With no `app/db` in Vault: "No password in Vault yet at app/db. Run rotate to create one. If it was there before, its metadata was removed." The same message, with status 404, for `?version=N` after the metadata was removed. For a version that Vault does not have: "Vault has no version 9" |
+| `gone` | With no `app/db` in Vault: "No password in Vault yet at app/db. Run rotate to create one. If it was there before, its metadata was removed." The same message, with status 404, for `?version=N` after the metadata was removed. For a version that Vault does not have: "Vault has no version 9". For a version that Vault no longer keeps, because it is older than the `max_versions` most recent versions: "Vault no longer keeps version 1". Both return status 404. |
 | `login_failed` | Vault login failed |
 | `unreachable` | "Cannot reach Vault", "Cannot read from Vault", or "Cannot reach the database" |
 | `not_configured` | Vault is not configured (`VAULT_ADDR` is not set) |
@@ -92,6 +92,8 @@ When the AWS copy matches no live Vault version, the first sentence is "The AWS 
 **Orders when Vault is down**
 
 The app keeps the last good latest password from Vault in process memory. It never logs it and never returns it. If Vault cannot be reached, or refuses the login, `/api/orders` uses that password and sets `cached` to `true`. The message then says so, for example "Cannot reach Vault. Using the last good password from Vault, v3. Database login with v3: accepted".
+
+Every call to Vault and to AWS has a short timeout, so a service that hangs, rather than refusing the connection, cannot hold a worker. Each Vault request may take 5 seconds (`KVS_VAULT_TIMEOUT`). The Secrets Manager client connects within 3 seconds, reads within 5 seconds, and makes at most 2 attempts. A Vault request that times out reads as `unreachable`, "Cannot reach Vault", the same as a refused connection.
 
 Each gunicorn worker keeps its own last good password. The container runs two workers. A worker that has not had a good read yet has nothing to fall back on. During an outage it returns the Vault error, with `cached` set to `false`.
 
@@ -136,6 +138,7 @@ The web front end reads these environment variables.
 | `VAULT_NAMESPACE` | none | Vault namespace, for example `admin/<your namespace>` on HCP Vault Dedicated |
 | `KVS_IAM_SERVER_ID` | none | Value of the `X-Vault-AWS-IAM-Server-ID` header. Match `iam_server_id_header_value` on `auth/aws/config/client`. |
 | `KVS_IAM_STS_REGION` | `us-east-1` | Region the IAM login request is signed for |
+| `KVS_VAULT_TIMEOUT` | `5` | Seconds each Vault request may take before the app reports "Cannot reach Vault". A value that is not a positive number uses the default. |
 | `AWS_REGION` | none | Region of the Secrets Manager client |
 | `KVS_AWS_SECRET_NAME` | none | Name of the synced secret in AWS Secrets Manager. When it is not set, the AWS panel says sync is not set up yet. |
 | `KVS_DB_HOST` | `db` | Postgres host |
@@ -280,7 +283,7 @@ node --test tests/
 
 - `pytest` covers the web layer, both readers, the Vault login, and that no response holds a full password.
 - `tests/test_rotate.sh` runs `rotate` with fake `vault`, `podman`, and `ssh` commands. It checks that the password goes on stdin only, that the pre-flight stops before Vault changes, and that `KVS_DB_EXEC` is never evaluated by a shell.
-- `node --test tests/` checks the text that the AWS panel shows. It needs Node.js and no packages. It was last run with Node.js 26.
+- `node --test tests/` checks the text that the AWS panel shows, and the labels on the version tabs. The latest tab says Latest, or Deleted or Destroyed when the latest version is. It needs Node.js and no packages. It was last run with Node.js 26.
 
 `tests/test_db_real.py` runs against a real Postgres and is skipped by default. To run it, set `KVS_PG_TEST=1` and `KVS_PG_PASSWORD`, with Postgres on `KVS_DB_HOST` and `KVS_DB_PORT` (default `127.0.0.1:55432`).
 

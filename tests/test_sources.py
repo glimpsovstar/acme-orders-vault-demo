@@ -125,8 +125,22 @@ def test_version_beyond_latest():
     assert raw is None
 
 
+def test_aged_out_version_is_gone_without_a_login():
+    """Past max_versions, Vault drops the oldest versions from the metadata."""
+    md = meta()
+    del md["data"]["versions"]["1"]
+    logins = []
+    src, v2 = vault(FakeV2(md), login=lambda u, p: logins.append(p) or True)
+    view, raw = src.read(1)
+    assert (view.state, view.version, view.latest) == ("gone", 1, 3)
+    assert view.message == "Vault no longer keeps version 1"
+    assert raw is None and view.masked is None
+    assert v2.calls == [] and logins == []
+
+
 @pytest.mark.parametrize("err", [
     requests.exceptions.ConnectionError("boom"),
+    requests.exceptions.ReadTimeout("no answer within the client timeout"),
     hvac.exceptions.VaultDown("sealed"),
 ])
 def test_vault_down_does_not_break_page(err):

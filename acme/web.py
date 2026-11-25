@@ -104,7 +104,11 @@ def create_app(*, vault_factory=None, sm_client=None, aws_name=None, login=None,
             return None
         if sm["client"] is None:
             import boto3
-            sm["client"] = boto3.client("secretsmanager", region_name=os.environ.get("AWS_REGION") or None)
+            from botocore.config import Config
+            # Short timeouts: a hung AWS call must not hold a gunicorn worker.
+            sm["client"] = boto3.client(
+                "secretsmanager", region_name=os.environ.get("AWS_REGION") or None,
+                config=Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2}))
         return sm["client"]
 
     @app.get("/")

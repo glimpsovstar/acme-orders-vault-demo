@@ -29,9 +29,9 @@ class FakeHvac:
         self.built, self.logins, self.renewals = [], [], 0
         self.fail_login, self.fail_renew, self.ttl = None, None, 3600
 
-    def __call__(self, url=None, token=None, namespace=None):
+    def __call__(self, url=None, token=None, namespace=None, timeout=None):
         owner = self
-        client = SimpleNamespace(url=url, token=token, namespace=namespace)
+        client = SimpleNamespace(url=url, token=token, namespace=namespace, timeout=timeout)
         client.auth = SimpleNamespace(aws=FakeAws(owner))
 
         def renew_self():
@@ -46,7 +46,8 @@ class FakeHvac:
 
 @pytest.fixture
 def env(monkeypatch):
-    for k in ("KVS_DEV_VAULT_TOKEN_FILE", "KVS_IAM_SERVER_ID", "VAULT_NAMESPACE", "KVS_IAM_STS_REGION"):
+    for k in ("KVS_DEV_VAULT_TOKEN_FILE", "KVS_IAM_SERVER_ID", "VAULT_NAMESPACE", "KVS_IAM_STS_REGION",
+              "KVS_VAULT_TIMEOUT"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("VAULT_ADDR", "https://vault.example:8200")
     monkeypatch.setenv("AWS_REGION", "ap-southeast-2")
@@ -134,3 +135,20 @@ def test_sts_region_override(env):
     mp.setenv("KVS_IAM_STS_REGION", "ap-southeast-2")
     auth.vault_client()
     assert fake.logins[0]["region"] == "ap-southeast-2"
+
+
+def test_vault_client_times_out_after_5_seconds_by_default(env, tmp_path):
+    """A Vault that hangs must not hold a gunicorn worker for hvac's default 30 s."""
+    fake, _, mp = env
+    assert auth.vault_client().timeout == 5
+    f = tmp_path / "token"
+    f.write_text("hvs.devtoken\n")
+    mp.setenv("KVS_DEV_VAULT_TOKEN_FILE", str(f))
+    assert auth.vault_client().timeout == 5
+
+
+@pytest.mark.parametrize("raw, expected", [("2", 2), ("2.5", 2.5), ("", 5), ("abc", 5), ("0", 5), ("-1", 5)])
+def test_vault_timeout_override(env, raw, expected):
+    fake, _, mp = env
+    mp.setenv("KVS_VAULT_TIMEOUT", raw)
+    assert auth.vault_client().timeout == expected

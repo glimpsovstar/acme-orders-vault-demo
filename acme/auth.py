@@ -18,6 +18,7 @@ import hvac.exceptions
 ROLE = "acme-orders"
 MOUNT = "aws"
 RENEW_BEFORE = 60  # seconds before expiry
+DEFAULT_TIMEOUT = 5  # seconds; hvac's own default is 30, as long as a gunicorn worker's
 
 _lock = threading.Lock()
 _client = None
@@ -31,6 +32,17 @@ def reset() -> None:
         _client, _expires = None, 0.0
 
 
+def _timeout() -> float:
+    """Seconds each Vault request may take: KVS_VAULT_TIMEOUT, or 5."""
+    try:
+        value = float(os.environ.get("KVS_VAULT_TIMEOUT") or DEFAULT_TIMEOUT)
+    except ValueError:
+        return DEFAULT_TIMEOUT
+    if value <= 0:
+        return DEFAULT_TIMEOUT
+    return int(value) if value.is_integer() else value
+
+
 def _aws_credentials():
     creds = boto3.Session().get_credentials()
     return creds.get_frozen_credentials() if creds else None
@@ -41,7 +53,7 @@ def _iam_login(addr: str, namespace: str | None):
     if creds is None:
         # Same outcome as Vault refusing the login: the page shows login_failed.
         raise hvac.exceptions.InvalidRequest("no AWS credentials for the IAM login")
-    client = hvac.Client(url=addr, namespace=namespace)
+    client = hvac.Client(url=addr, namespace=namespace, timeout=_timeout())
     resp = client.auth.aws.iam_login(
         creds.access_key, creds.secret_key, creds.token,
         header_value=os.environ.get("KVS_IAM_SERVER_ID") or None,
@@ -68,7 +80,7 @@ def vault_client():
 
     token_file = os.environ.get("KVS_DEV_VAULT_TOKEN_FILE")
     if token_file:
-        return hvac.Client(url=addr, namespace=namespace,
+        return hvac.Client(url=addr, namespace=namespace, timeout=_timeout(),
                            token=Path(token_file).read_text().strip())
 
     with _lock:

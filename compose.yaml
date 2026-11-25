@@ -17,6 +17,7 @@ services:
       KVS_AWS_SECRET_NAME: ${KVS_AWS_SECRET_NAME:-}
       KVS_IAM_SERVER_ID: ${KVS_IAM_SERVER_ID:-}
       KVS_IAM_STS_REGION: ${KVS_IAM_STS_REGION:-us-east-1}
+      KVS_VAULT_TIMEOUT: ${KVS_VAULT_TIMEOUT:-5}
       KVS_DB_HOST: db
       KVS_DB_NAME: acme
     depends_on:

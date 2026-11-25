@@ -65,7 +65,11 @@ class VaultSource:
         if n > latest or n < 1:
             return self._view("gone", f"Vault has no version {n}", version=n, latest=latest), None
 
-        info = meta.get("versions", {}).get(str(n), {})
+        kept = meta.get("versions", {})
+        if str(n) not in kept:
+            # Past max_versions, Vault drops the oldest versions entirely.
+            return self._view("gone", f"Vault no longer keeps version {n}", version=n, latest=latest), None
+        info = kept[str(n)]
         changed = info.get("created_time") or None
         if info.get("destroyed"):
             return self._view("destroyed", f"Version {n} was destroyed in Vault",
