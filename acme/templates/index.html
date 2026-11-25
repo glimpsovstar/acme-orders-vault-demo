@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Orders</title>
+<link rel="icon" href="data:,">
+<link rel="preload" href="{{ url_for('static', filename='fonts/SchibstedGrotesk.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ url_for('static', filename='acme.css') }}">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">Acme Orders <small>Dispatch</small></div>
+  <div class="live"><span class="pulse" aria-hidden="true"></span> Checking for a new password every 5 seconds</div>
+</header>
+
+<main>
+  <section aria-labelledby="orders-h">
+    <h1 id="orders-h">Today's orders</h1>
+    <p class="lede">Read from the orders database. If the database refuses the password, this list empties and says why.</p>
+    <div class="slip">
+      <table>
+        <thead><tr><th>Order</th><th>Items</th><th>Courier</th><th>Status</th></tr></thead>
+        <tbody id="orders"><tr class="empty"><td colspan="4">Checking the database</td></tr></tbody>
+      </table>
+      <div class="foot"><span id="orders-who">Database login</span><span id="orders-state"></span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="pw-h">
+    <h1 id="pw-h">Where the database password comes from</h1>
+    <p class="lede">The same password, read two ways. Change it in Vault and both readers pick it up with no redeploy.</p>
+
+    <div class="sources">
+      <article class="src vault" id="vault">
+        <h2>Web front end reads Vault</h2>
+        <p class="who">KV version 2, path <code>app/db</code></p>
+        <div class="versions" role="group" aria-label="Password version" id="versions"></div>
+        <div class="shelf"></div>
+        <dl class="kv">
+          <dt>Password</dt><dd><code id="v-pw">none</code></dd>
+          <dt>Created</dt><dd id="v-changed">Not known yet</dd>
+        </dl>
+        <p class="result" id="v-result" aria-live="polite">Checking Vault</p>
+      </article>
+
+      <div class="sync">Vault secrets sync copies each new version to AWS</div>
+
+      <article class="src aws" id="aws">
+        <h2>Nightly report job reads AWS Secrets Manager</h2>
+        <p class="who">Secret <code>{{ aws_name or "not set yet" }}</code>, read with the AWS SDK only</p>
+        <dl class="kv">
+          <dt>Password</dt><dd><code id="a-pw">none</code></dd>
+          <dt>Last changed</dt><dd id="a-changed">Not known yet</dd>
+        </dl>
+        <p class="result" id="a-result" aria-live="polite">Checking AWS Secrets Manager</p>
+      </article>
+    </div>
+  </section>
+</main>
+<script src="{{ url_for('static', filename='acme.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+/* Acme Orders. Copied from the approved mockup (docs/superpowers/mockups/acme-orders-v5.html). */
+@font-face { font-family: "Schibsted Grotesk"; font-style: normal; font-weight: 400 900;
+  font-display: swap; src: url("fonts/SchibstedGrotesk.woff2") format("woff2"); }
+:root {
+  --bg: #E9EDF1; --ink: #17202B; --muted: #5B6673; --line: #CBD3DC; --panel: #FFFFFF;
+  --vault: #2B4FD8; --vault-soft: #E6EBFC; --aws: #0B7A6F; --aws-soft: #E1F2EF;
+  --ok: #1D7F46; --bad: #B8352A; --bad-soft: #FBE9E7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 15px/1.5 "Schibsted Grotesk", system-ui, sans-serif; }
+.id, .v { font-variant-numeric: tabular-nums; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px 28px; background: var(--ink); color: #fff; }
+.brand { font-weight: 800; font-size: 19px; letter-spacing: -0.01em; }
+.brand small { font-weight: 400; opacity: .65; margin-left: 10px; font-size: 14px; }
+.live { font-size: 13px; display: flex; align-items: center; gap: 8px; opacity: .85; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; }
+@media (prefers-reduced-motion: no-preference) { .pulse { animation: p 2s ease-in-out infinite; } }
+@keyframes p { 50% { opacity: .3; } }
+
+main { max-width: 1180px; margin: 0 auto; padding: 28px; display: grid; gap: 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); align-items: start; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+.lede { color: var(--muted); margin: 0 0 16px; max-width: 60ch; }
+
+/* Orders: a packing-slip table, not cards */
+.slip { background: var(--panel); border: 1px solid var(--line); }
+.slip table { width: 100%; border-collapse: collapse; }
+.slip th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px;
+  padding: 10px 14px; border-bottom: 2px solid var(--ink); }
+.slip td { padding: 11px 14px; border-bottom: 1px dashed var(--line); }
+.slip tr:last-child td { border-bottom: 0; }
+.id { font-weight: 600; }
+.st { font-size: 13px; padding: 2px 8px; border-radius: 3px; background: var(--bg); }
+.foot { font-size: 13px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ok { color: var(--ok); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+
+/* Secret sources joined by the sync line */
+.sources { position: relative; display: grid; gap: 18px; }
+.src { background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--c);
+  padding: 16px 18px; }
+.src.vault { --c: var(--vault); }
+.src.aws { --c: var(--aws); }
+.src h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.src .who { color: var(--muted); font-size: 13px; margin: 2px 0 12px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+code { font: 500 13.5px/1.4 "Schibsted Grotesk", system-ui, sans-serif; background: var(--bg);
+  padding: 1px 6px; border-radius: 3px; }
+
+.sync { display: flex; align-items: center; gap: 10px; padding-left: 26px; color: var(--muted); font-size: 13px; }
+.sync::before { content: ""; width: 2px; height: 34px; background:
+  repeating-linear-gradient(to bottom, var(--aws) 0 5px, transparent 5px 9px); }
+
+/* The one bold element: the version strip */
+.versions { display: flex; align-items: flex-end; gap: 0; margin: 14px 0 10px; }
+.v { appearance: none; border: 1px solid var(--line); border-bottom: 0; background: var(--bg);
+  color: var(--muted); font: 600 15px "Schibsted Grotesk", sans-serif; padding: 8px 16px 6px;
+  margin-right: -1px; cursor: pointer; border-radius: 6px 6px 0 0; }
+.v span { display: block; font-weight: 400; font-size: 12px; }
+.v[aria-pressed="true"] { background: var(--vault); border-color: var(--vault); color: #fff;
+  padding-top: 14px; font-size: 22px; font-weight: 800; }
+.v.pinned[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); }
+.v:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.shelf { height: 4px; background: var(--vault); margin-top: -10px; margin-bottom: 12px; }
+.result { padding: 10px 12px; font-size: 14px; background: var(--vault-soft); }
+.result.refused { background: var(--bad-soft); }
+.aws .result { background: var(--aws-soft); }
+
+@media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 16px; } .bar { padding: 12px 16px; } }
+
+/* App states, within the mockup palette */
+.src.vault.pinned { --c: var(--bad); }
+.src.vault.pinned .shelf { background: var(--bad); }
+.result { margin: 12px 0 0; }
+.v.gone { text-decoration: line-through; }
+.empty td { color: var(--muted); padding: 18px 14px; }
+.h3 { font-size: 15px; font-weight: 600; margin: 26px 0 8px; }

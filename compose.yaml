@@ -1,0 +1,47 @@
+# Acme Orders on one host: the web front end and its Postgres database.
+# Set VAULT_ADDR, VAULT_NAMESPACE, AWS_REGION and KVS_AWS_SECRET_NAME in the
+# environment (or a git-ignored .env next to this file) before `podman compose up`.
+# The web front end logs in to Vault with AWS IAM auth, using the instance role.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: localhost/acme-orders:latest
+    ports:
+      - "8080:8080"
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:-}
+      VAULT_NAMESPACE: ${VAULT_NAMESPACE:-}
+      AWS_REGION: ${AWS_REGION:-}
+      KVS_AWS_SECRET_NAME: ${KVS_AWS_SECRET_NAME:-}
+      KVS_IAM_SERVER_ID: ${KVS_IAM_SERVER_ID:-}
+      KVS_IAM_STS_REGION: ${KVS_IAM_STS_REGION:-us-east-1}
+      KVS_DB_HOST: db
+      KVS_DB_NAME: acme
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+    restart: unless-stopped
+
+  db:
+    image: docker.io/library/postgres:16
+    container_name: acme-db
+    environment:
+      POSTGRES_DB: acme
+    # The superuser password is random and never stored: operators reach the
+    # database with `podman exec` over the local socket, which needs none.
+    entrypoint:
+      - sh
+      - -c
+      - 'POSTGRES_PASSWORD="$$(head -c 24 /dev/urandom | base64)" exec docker-entrypoint.sh postgres'
+    volumes:
+      - acme-db:/var/lib/postgresql/data
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro,Z
+    restart: unless-stopped
+
+volumes:
+  acme-db:

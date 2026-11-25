@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# rotate: write a new database password to Vault (app/db) and set it on the
+# database user in one step, so only the newest KV version can log in.
+#
+# Usage:  ./rotate                     generate a new password
+#         ./rotate < password-file     use the password on stdin (first line,
+#                                      at least 20 characters)
+#
+# Needs: the vault CLI logged in with an operator token (VAULT_ADDR, VAULT_TOKEN,
+# VAULT_NAMESPACE as usual) and a way to run psql in the database container.
+#
+# KVS_DB_EXEC is the command that runs psql in the database container, with the
+# SQL on its stdin. Default: "podman exec -i acme-db" (on the instance itself).
+# From a workstation, run the same command on the instance over SSH, so the
+# operator token never leaves the workstation:
+#   KVS_DB_EXEC="ssh ec2-user@<app host> sudo podman exec -i acme-db" ./rotate
+# The value is split into words on spaces and tabs only. rotate never passes it
+# to a local shell, so there is no glob expansion, no command substitution, and
+# no quoting: a word cannot contain a space, and ~ is not expanded.
+# When the first word is ssh, ssh joins the remaining words (and the psql
+# arguments rotate adds) with spaces, and the remote shell parses that line.
+# So put only fixed flags and names there, never a secret or a word that
+# needs quoting. The password and SQL always go on stdin.
+#
+# Before it writes to Vault, rotate checks that it can reach the database
+# with the same command (SELECT 1 on stdin). If it cannot, it stops and
+# changes nothing.
+#
+# Works with bash 3.2 (the macOS default) and later.
+#
+# The password never goes on a command line: vault and psql read it on stdin.
+# Prints the new KV version number on stdout.
+set -euo pipefail
+
+db_container="${KVS_DB_CONTAINER:-acme-db}"
+db_role="acme"
+# read -a splits on IFS whitespace with no globbing and no eval (see above).
+read -r -a db_exec <<<"${KVS_DB_EXEC:-podman exec -i $db_container}"
+if [ "${#db_exec[@]}" -eq 0 ]; then
+  echo "rotate: KVS_DB_EXEC is empty. Unset it, or give the command that runs psql in the database container." >&2
+  exit 2
+fi
+
+pw=""
+if [ ! -t 0 ]; then
+  IFS= read -r pw || true
+fi
+if [ -z "$pw" ]; then
+  pw="$(openssl rand -base64 18)"
+elif [ "${#pw}" -lt 20 ]; then
+  echo "rotate: that password is too short. Use at least 20 characters, or give none and rotate makes one." >&2
+  exit 2
+fi
+
+# 0. Pre-flight: reach the database through the same command, before Vault moves.
+if ! printf 'SELECT 1;\n' |
+  "${db_exec[@]}" psql -q -v ON_ERROR_STOP=1 -U postgres -d acme >/dev/null 2>&1; then
+  echo "rotate: cannot reach the database with: ${db_exec[*]}" >&2
+  echo "rotate: nothing was changed. Fix that command (for SSH, check: ssh ec2-user@<app host> true), then run rotate again." >&2
+  exit 3
+fi
+
+# 1. Vault: create app/db on the first run, otherwise add a version.
+if vault kv metadata get -format=json app/db >/dev/null 2>&1; then
+  printf '%s' "$pw" | vault kv patch app/db password=- >/dev/null
+else
+  printf '%s' "$pw" | vault kv put app/db username="$db_role" password=- >/dev/null
+fi
+
+# 2. Postgres: same password on the database user. SQL goes in on stdin.
+# The SET stops a failed ALTER ROLE from writing the statement (and so the
+# password) to the Postgres log.
+# Double each single quote for SQL. Quotes held in variables, because bash 3.2
+# keeps the backslashes of an escaped quote in the replacement text.
+q="'"; qq="''"
+sql_pw="${pw//$q/$qq}"
+if ! printf "SET log_min_error_statement = panic;\nALTER ROLE %s WITH PASSWORD '%s';\n" "$db_role" "$sql_pw" |
+  "${db_exec[@]}" psql -q -v ON_ERROR_STOP=1 -U postgres -d acme >/dev/null; then
+  echo "rotate: Vault has the new password but the database user does not." >&2
+  echo "rotate: fix the database command (${db_exec[*]}), then run rotate again." >&2
+  exit 1
+fi
+unset pw sql_pw
+
+# 3. Report the new version.
+version="$(vault kv metadata get -format=json app/db |
+  grep -o '"current_version": *[0-9]*' | grep -o '[0-9]*$')"
+echo "rotate: app/db is now at version $version and the database user has its password." >&2
+echo "$version"
